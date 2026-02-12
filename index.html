@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Anomaly Personalized</title>
+    
+    <style>
+        /* Стили для всей страницы */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #140f28;
+            color: #e0e0ff;
+            font-family: 'Consolas', 'Menlo', monospace;
+        }
+        canvas {
+            display: block;
+        }
+
+        /* Стили для стартового экрана с вводом имени */
+        #name-prompt {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(20, 15, 40, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 0.5s ease-out;
+        }
+        #name-prompt h2 {
+            font-size: 2em;
+            text-shadow: 0 0 10px #be9ffc;
+        }
+        #name-input {
+            background: transparent;
+            border: 1px solid #8e6ad1;
+            border-radius: 5px;
+            color: #e0e0ff;
+            font-size: 1.5em;
+            padding: 10px;
+            text-align: center;
+            margin: 20px;
+            box-shadow: 0 0 15px rgba(142, 106, 209, 0.5);
+            outline: none;
+        }
+        #submit-button {
+            background-color: #8e6ad1;
+            border: none;
+            border-radius: 5px;
+            color: #140f28;
+            font-size: 1.2em;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background-color 0.3s, box-shadow 0.3s;
+        }
+        #submit-button:hover {
+            background-color: #a788e4;
+            box-shadow: 0 0 20px #a788e4;
+        }
+    </style>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
+</head>
+<body>
+    <!-- HTML-элементы для стартового экрана -->
+    <div id="name-prompt">
+        <h2>Как тебя зовут?</h2>
+        <input type="text" id="name-input" maxlength="15" autofocus/>
+        <button id="submit-button">Войти</button>
+    </div>
+
+    <script>
+        // --- Глобальные переменные ---
+        let animationStarted = false;
+        let userName = "";
+        let textTexture;
+
+        // --- Настройки анимации ---
+        const sphereRadius = 220;
+        const detail = 25;
+        const noiseScale = 0.005;
+        const noiseStrength = 150;
+        const baseAlpha = 120;
+        const pressedAlpha = 255;
+
+        let points = [];
+        let stars = [];
+        let time = 0;
+        let paradoxFactor = 0;
+        let targetParadoxFactor = 0;
+
+        // --- Этап 1: Настройка взаимодействия со стартовым экраном ---
+        window.onload = () => {
+            const namePrompt = document.getElementById('name-prompt');
+            const nameInput = document.getElementById('name-input');
+            const submitButton = document.getElementById('submit-button');
+
+            const startAnimation = () => {
+                userName = nameInput.value.trim() || "Аномалия"; // Имя по умолчанию, если ничего не введено
+                namePrompt.style.opacity = '0';
+                setTimeout(() => {
+                    namePrompt.style.display = 'none';
+                }, 500); // Скрываем блок после завершения анимации
+                initializeAnimation(); // Запускаем подготовку к анимации
+            };
+            
+            submitButton.onclick = startAnimation;
+            nameInput.addEventListener('keyup', (event) => {
+                if (event.key === "Enter") {
+                    startAnimation();
+                }
+            });
+        };
+
+        // --- Этап 2: Подготовка к анимации после ввода имени ---
+        function initializeAnimation() {
+            // Создание точек сферы
+            for (let i = 0; i <= detail; i++) {
+                const phi = map(i, 0, detail, 0, PI);
+                for (let j = 0; j <= detail; j++) {
+                    const theta = map(j, 0, detail, 0, TWO_PI);
+                    const x = sphereRadius * sin(phi) * cos(theta);
+                    const y = sphereRadius * sin(phi) * sin(theta);
+                    const z = sphereRadius * cos(phi);
+                    points.push(createVector(x, y, z));
+                }
+            }
+
+            // Создание звезд
+            for (let i = 0; i < 500; i++) {
+                stars.push(createVector(
+                    random(-width * 2, width * 2),
+                    random(-height * 2, height * 2),
+                    random(-1000, 1000)
+                ));
+            }
+            
+            // Создание текстуры с именем
+            createTextTexture();
+
+            animationStarted = true;
+        }
+        
+        // Функция для создания текстуры с текстом
+        function createTextTexture() {
+            textTexture = createGraphics(600, 200);
+            textTexture.background(255, 0); // Прозрачный фон
+            textTexture.fill(220, 210, 255);
+            textTexture.textAlign(CENTER, CENTER);
+            textTexture.textSize(64);
+            
+            // Добавляем эффект свечения с помощью тени
+            textTexture.drawingContext.shadowBlur = 32;
+            textTexture.drawingContext.shadowColor = '#9a8cff';
+            
+            textTexture.text(userName, textTexture.width / 2, textTexture.height / 2);
+        }
+
+        // --- Основной код p5.js ---
+        function setup() {
+            createCanvas(windowWidth, windowHeight, WEBGL);
+            // Заметьте: основная инициализация перенесена в initializeAnimation()
+        }
+
+        function draw() {
+            background(20, 15, 40);
+            
+            // Если анимация еще не началась, выходим из функции
+            if (!animationStarted) {
+                return;
+            }
+            
+            drawStars();
+
+            // Плавное включение/выключение "парадокс-эффекта"
+            targetParadoxFactor = (mouseIsPressed || touches.length > 0) ? 1.0 : 0.0;
+            paradoxFactor = lerp(paradoxFactor, targetParadoxFactor, 0.08);
+
+            // Управление вращением
+            const rotX = map(mouseY, 0, height, -PI / 4, PI / 4);
+            const rotY = map(mouseX, 0, width, -PI / 4, PI / 4);
+            rotateX(rotX);
+            rotateY(rotY + time * 0.1 * paradoxFactor);
+
+            // Вычисление искаженных точек и текущей яркости
+            let deformedPoints = [];
+            let currentNoiseStrength = noiseStrength + (200 * paradoxFactor);
+            let currentAlpha = lerp(baseAlpha, pressedAlpha, paradoxFactor);
+
+            for (let p of points) {
+                let displacement = noise(p.x * noiseScale, p.y * noiseScale, p.z * noiseScale + time);
+                let deformedVector = p.copy().normalize().mult(displacement * currentNoiseStrength);
+                deformedPoints.push(p.copy().add(deformedVector));
+            }
+
+            // Отрисовка с эффектами
+            noFill();
+            strokeWeight(0.9);
+            blendMode(ADD);
+
+            // Красный канал
+            push();
+            translate(-5 - 15 * paradoxFactor, 0, 0);
+            stroke(255, 0, 0, currentAlpha * 0.8);
+            drawWireframe(deformedPoints);
+            pop();
+
+            // Синий канал
+            push();
+            translate(5 + 15 * paradoxFactor, 0, 0);
+            stroke(0, 100, 255, currentAlpha * 0.8);
+            drawWireframe(deformedPoints);
+            pop();
+
+            // Основной белый/светло-голубой канал
+            stroke(200, 220, 255, currentAlpha);
+            drawWireframe(deformedPoints);
+            
+            // --- РИСУЕМ ТЕКСТ ВНУТРИ ---
+            push();
+            noStroke();
+            texture(textTexture);
+            // Делаем текст чуть ярче, особенно при нажатии
+            let textBrightness = min(255, currentAlpha + 70);
+            tint(255, textBrightness);
+            plane(450, 150);
+            noTint();
+            pop();
+
+            blendMode(BLEND);
+            time += 0.005 + (0.01 * paradoxFactor);
+        }
+
+        function drawWireframe(pointsToDraw) {
+            for (let i = 0; i < detail + 1; i++) {
+                beginShape();
+                for (let j = 0; j < detail + 1; j++) {
+                    let index = i * (detail + 1) + j;
+                    vertex(pointsToDraw[index].x, pointsToDraw[index].y, pointsToDraw[index].z);
+                }
+                endShape();
+            }
+            for (let j = 0; j < detail + 1; j++) {
+                beginShape();
+                for (let i = 0; i < detail + 1; i++) {
+                    let index = i * (detail + 1) + j;
+                    vertex(pointsToDraw[index].x, pointsToDraw[index].y, pointsToDraw[index].z);
+                }
+                endShape();
+            }
+        }
+        
+        function drawStars() {
+            push();
+            noStroke();
+            fill(255, 255, 255, 150);
+            for (let star of stars) {
+                push();
+                translate(star.x, star.y, star.z);
+                sphere(1.5);
+                pop();
+            }
+            pop();
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+    </script>
+</body>
+</html>
